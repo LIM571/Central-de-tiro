@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Central de Tiro — Registro de Comandos</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          base:       '#12140D',
+          panel:      '#1B1F16',
+          panel2:     '#242A1B',
+          line:       '#34392A',
+          ink:        '#E7E2D0',
+          inkmuted:   '#9AA085',
+          signal:     '#E0A73B',
+          signaldark: '#B9852A',
+          alert:      '#C1473C',
+          alertdark:  '#9C382F',
+        },
+        fontFamily: {
+          display: ['Oswald', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+  html, body { background-color: #12140D; }
+  * { -webkit-tap-highlight-color: transparent; }
+  ::selection { background: #E0A73B; color: #12140D; }
+
+  /* thin, quiet scrollbars for the tab rail and log feed */
+  .rail::-webkit-scrollbar { height: 6px; }
+  .rail::-webkit-scrollbar-thumb { background: #34392A; border-radius: 3px; }
+  .feed::-webkit-scrollbar { width: 6px; }
+  .feed::-webkit-scrollbar-thumb { background: #34392A; border-radius: 3px; }
+
+  /* remove native number spinners so our mono digit fields look like ledger cells */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+
+  .field-invalid { border-color: #C1473C !important; }
+
+  @keyframes blink-dot { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  .live-dot { animation: blink-dot 2s ease-in-out infinite; }
+</style>
+</head>
+
+<body class="bg-base text-ink font-sans min-h-screen">
+
+  <!-- ============ HEADER ============ -->
+  <header class="sticky top-0 z-30 bg-base/95 backdrop-blur border-b border-line">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
+      <div class="flex items-baseline gap-3">
+        <h1 class="font-display uppercase tracking-wide text-xl sm:text-2xl font-semibold text-ink">Central de Tiro</h1>
+        <span class="hidden sm:inline text-xs text-inkmuted font-display uppercase tracking-widest">Pel Mrt 81mm · Registro de Comandos</span>
+      </div>
+
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-signal live-dot"></span>
+          <span id="liveClock" class="font-mono text-sm text-inkmuted tabular-nums">00:00:00</span>
+        </div>
+        <input id="missionName" type="text" placeholder="Nome da missão (opcional)"
+          class="bg-panel2 border border-line rounded px-3 py-1.5 text-sm text-ink placeholder:text-inkmuted/70 focus:outline-none focus:ring-2 focus:ring-signal/60 w-40 sm:w-56">
+        <button id="btnExportAll"
+          class="bg-signal hover:bg-signaldark text-base font-display font-semibold uppercase tracking-wide text-sm px-3 py-1.5 rounded transition-colors">
+          ⬇ Exportar tudo
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ PEÇA SELECTOR ============ -->
+  <div class="border-b border-line bg-panel/60">
+    <div class="max-w-6xl mx-auto px-4 py-2">
+      <div id="pecaTabs" class="rail flex gap-2 overflow-x-auto pb-1"></div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <main class="max-w-6xl mx-auto px-4 py-5 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5">
+
+    <!-- ----- FORM PANEL ----- -->
+    <section class="order-1 lg:order-1">
+      <div class="bg-panel border border-line rounded-lg p-4 lg:sticky lg:top-24">
+
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-display uppercase tracking-wide text-sm text-inkmuted">Novo registro</h2>
+          <span id="targetPecaLabel" class="font-display uppercase text-xs tracking-wide bg-panel2 border border-line rounded px-2 py-1 text-signal">Peça 1</span>
+        </div>
+
+        <!-- mode segmented control -->
+        <div class="grid grid-cols-2 gap-1 bg-panel2 border border-line rounded p-1 mb-4">
+          <button type="button" data-mode="inicial" class="mode-btn font-display uppercase text-xs sm:text-sm tracking-wide py-2 rounded transition-colors">Tiro inicial</button>
+          <button type="button" data-mode="correcao" class="mode-btn font-display uppercase text-xs sm:text-sm tracking-wide py-2 rounded transition-colors">Correção</button>
+        </div>
+
+        <form id="shotForm" class="space-y-3" novalidate>
+
+          <!-- INICIAL-only fields -->
+          <div id="grpMunicao" class="modo-inicial">
+            <label class="block text-xs font-display uppercase tracking-wide text-inkmuted mb-1">Munição e espoleta</label>
+            <select id="fMunicao" class="w-full bg-panel2 border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/60">
+              <option value="explosiva_instantanea">Explosiva — espoleta instantânea</option>
+              <option value="explosiva_retardo">Explosiva — espoleta retardo</option>
+              <option value="fumaca">Fumaça</option>
+              <option value="iluminativa">Iluminativa — espoleta tempo</option>
+              <option value="exercicio">Exercício</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-display uppercase tracking-wide text-inkmuted mb-1">
+              Deriva <span id="derivaHint" class="normal-case text-inkmuted/70">(4 dígitos, 0000–6400)</span>
+            </label>
+            <input id="fDeriva" type="text" inputmode="numeric" maxlength="4" placeholder="0000"
+              class="w-full bg-panel2 border border-line rounded px-3 py-2 font-mono text-lg tracking-[0.3em] text-center focus:outline-none focus:ring-2 focus:ring-signal/60">
+            <p id="derivaError" class="text-alert text-xs mt-1 hidden">Informe 4 dígitos entre 0000 e 6400.</p>
+          </div>
+
+          <div id="grpEspecie" class="modo-inicial">
+            <label class="block text-xs font-display uppercase tracking-wide text-inkmuted mb-1">Espécie de tiro</label>
+            <select id="fEspecie" class="w-full bg-panel2 border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/60">
+              <option value="um_tiro">Um tiro — a meu comando</option>
+              <option value="rajada">Rajada</option>
+              <option value="salva">Salva</option>
+              <option value="continuo">Contínuo</option>
+              <option value="zona">Tiro sobre zona</option>
+              <option value="ceifante">Ceifante</option>
+            </select>
+            <div id="grpDetalhe" class="mt-2 hidden">
+              <label id="detalheLabel" class="block text-xs font-display uppercase tracking-wide text-inkmuted mb-1">Detalhe</label>
+              <input id="fDetalheNum" type="number" class="w-full bg-panel2 border border-line rounded px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-signal/60">
+              <select id="fDetalheSel" class="w-full bg-panel2 border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/60 hidden">
+                <option value="Pela Direita">Pela direita</option>
+                <option value="Pela Esquerda">Pela esquerda</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-display uppercase tracking-wide text-inkmuted mb-1">Carga</label>
+              <select id="fCarga" class="w-full bg-panel2 border border-line rounded px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-signal/60">
+                <option value="">—</option>
+                <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
+                <option>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-display uppercase tracking-wide text-inkmuted mb-1">Alça</label>
+              <input id="fAlca" type="text" inputmode="numeric" maxlength="4" placeholder="0000"
+                class="w-full bg-panel2 border border-line rounded px-3 py-2 font-mono text-sm text-center focus:outline-none focus:ring-2 focus:ring-signal/60">
+            </div>
+          </div>
+
+          <div id="grpTempo" class="modo-inicial">
+            <label class="block text-xs font-display uppercase tracking-wide text-inkmuted mb-1">
+              Graduação de tempo <span class="normal-case text-inkmuted/70">(só granada iluminativa)</span>
+            </label>
+            <input id="fTempo" type="number" min="0" disabled placeholder="—"
+              class="w-full bg-panel2 border border-line rounded px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-signal/60 disabled:opacity-40">
+          </div>
+
+          <div>
+            <label class="block text-xs font-display uppercase tracking-wide text-inkmuted mb-1">Observação <span class="normal-case text-inkmuted/70">(opcional, uso interno)</span></label>
+            <input id="fObs" type="text" maxlength="80" placeholder="Ex.: alvo, contexto da cena..."
+              class="w-full bg-panel2 border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/60">
+          </div>
+
+          <button id="btnAdd" type="submit"
+            class="w-full font-display uppercase tracking-wide font-semibold py-2.5 rounded transition-colors bg-signal hover:bg-signaldark text-base">
+            + Registrar tiro
+          </button>
+        </form>
+
+        <div class="grid grid-cols-2 gap-2 mt-3">
+          <button id="btnSuspender" class="font-display uppercase text-xs tracking-wide py-2 rounded border border-line bg-panel2 hover:bg-panel2/60 text-signal transition-colors">⏸ Suspender fogo</button>
+          <button id="btnCessar" class="font-display uppercase text-xs tracking-wide py-2 rounded border border-line bg-panel2 hover:bg-panel2/60 text-alert transition-colors">⏹ Cessar fogo</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ----- LOG PANEL ----- -->
+    <section class="order-2 lg:order-2">
+      <div class="bg-panel border border-line rounded-lg p-4 min-h-[420px] flex flex-col">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h2 id="logTitle" class="font-display uppercase tracking-wide text-sm text-ink">Peça 1 — registro de tiros</h2>
+          <div class="flex items-center gap-2">
+            <button id="btnExportPeca" class="font-display uppercase text-xs tracking-wide px-2.5 py-1.5 rounded border border-line bg-panel2 hover:bg-panel2/60 text-inkmuted transition-colors">⬇ PDF desta peça</button>
+            <button id="btnClearPeca" class="font-display uppercase text-xs tracking-wide px-2.5 py-1.5 rounded border border-line bg-panel2 hover:bg-panel2/60 text-inkmuted transition-colors">Limpar</button>
+          </div>
+        </div>
+
+        <div id="feed" class="feed flex-1 space-y-3 overflow-y-auto max-h-[70vh] pr-1"></div>
+      </div>
+
+      <p class="text-xs text-inkmuted mt-3 leading-relaxed">
+        Os registros ficam apenas na memória desta aba — feche a página e eles somem. Exporte em PDF sempre que quiser guardar o histórico da missão.
+      </p>
+    </section>
+  </main>
+
+<script>
+(function () {
+  "use strict";
+
+  const TOTAL_PECAS = 7;
+  let activePeca = 1;
+  let mode = 'inicial';
+  let records = [];
+  let uidCounter = 1;
+
+  const MUNICAO_LABEL = {
+    explosiva_instantanea: 'Explosiva (espoleta instantânea)',
+    explosiva_retardo: 'Explosiva (espoleta retardo)',
+    fumaca: 'Fumaça',
+    iluminativa: 'Iluminativa (espoleta tempo)',
+    exercicio: 'Exercício',
+  };
+
+  const ESPECIE_CONFIG = {
+    um_tiro:  { needsDetalhe: false },
+    rajada:   { needsDetalhe: true,  kind: 'num', label: 'Nº de tiros',      placeholder: '5'  },
+    salva:    { needsDetalhe: true,  kind: 'sel', label: 'Direção' },
+    continuo: { needsDetalhe: true,  kind: 'num', label: 'Intervalo (seg)',  placeholder: '5'  },
+    zona:     { needsDetalhe: true,  kind: 'num', label: 'Amplitude (m)',    placeholder: '50' },
+    ceifante: { needsDetalhe: true,  kind: 'num', label: 'Nº de voltas',     placeholder: '2'  },
+  };
+
+  function especieLabel(especie, detalhe) {
+    switch (especie) {
+      case 'um_tiro':  return 'Um Tiro, A Meu Comando!';
+      case 'rajada':   return 'Rajada, ' + (detalhe || '?') + ' Tiros!';
+      case 'salva':    return 'Salva, ' + (detalhe || 'Pela Direita') + '!';
+      case 'continuo': return 'Contínuo, Intervalo ' + (detalhe || '5') + 's!';
+      case 'zona':     return 'Tiro sobre Zona, Amplitude ' + (detalhe || '50') + 'm!';
+      case 'ceifante': return 'Ceifante, ' + (detalhe || '2') + ' Voltas!';
+      default: return '--';
+    }
+  }
+
+  function pad4(v) {
+    if (v === '' || v == null) return '';
+    return String(v).replace(/\D/g, '').padStart(4, '0');
+  }
+
+  // ---------- DOM refs ----------
+  const $ = (id) => document.getElementById(id);
+  const pecaTabsEl   = $('pecaTabs');
+  const feedEl       = $('feed');
+  const logTitleEl   = $('logTitle');
+  const targetLabel  = $('targetPecaLabel');
+  const form         = $('shotForm');
+  const btnAdd       = $('btnAdd');
+  const fMunicao     = $('fMunicao');
+  const fDeriva      = $('fDeriva');
+  const fEspecie     = $('fEspecie');
+  const grpDetalhe   = $('grpDetalhe');
+  const detalheLabel = $('detalheLabel');
+  const fDetalheNum  = $('fDetalheNum');
+  const fDetalheSel  = $('fDetalheSel');
+  const fCarga       = $('fCarga');
+  const fAlca        = $('fAlca');
+  const fTempo       = $('fTempo');
+  const fObs         = $('fObs');
+  const derivaError  = $('derivaError');
+
+  // ---------- Peça tabs ----------
+  function renderTabs() {
+    pecaTabsEl.innerHTML = '';
+    for (let p = 1; p <= TOTAL_PECAS; p++) {
+      const count = records.filter(r => r.peca === p).length;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'shrink-0 flex items-center gap-2 font-display uppercase tracking-wide text-sm px-3.5 py-2 rounded border transition-colors ' +
+        (p === activePeca
+          ? 'bg-signal text-base border-signal'
+          : 'bg-panel2 text-inkmuted border-line hover:text-ink');
+      btn.innerHTML = 'Peça ' + p +
+        (count ? '<span class="text-[10px] font-mono ' + (p === activePeca ? 'text-base/70' : 'text-inkmuted/70') + '">(' + count + ')</span>' : '');
+      btn.addEventListener('click', () => { activePeca = p; renderAll(); });
+      pecaTabsEl.appendChild(btn);
+    }
+  }
+
+  // ---------- Mode segmented control ----------
+  function renderModeButtons() {
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      const active = btn.dataset.mode === mode;
+      btn.className = 'mode-btn font-display uppercase text-xs sm:text-sm tracking-wide py-2 rounded transition-colors ' +
+        (active ? 'bg-signal text-base' : 'text-inkmuted hover:text-ink');
+    });
+  }
+
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => { mode = btn.dataset.mode; syncFormMode(); });
+  });
+
+  function syncFormMode() {
+    renderModeButtons();
+    const isInicial = mode === 'inicial';
+    document.querySelectorAll('.modo-inicial').forEach(el => el.classList.toggle('hidden', !isInicial));
+    fCarga.required = true;
+    fAlca.required = true;
+    btnAdd.textContent = isInicial ? '+ Registrar tiro' : '+ Registrar correção';
+    btnAdd.className = 'w-full font-display uppercase tracking-wide font-semibold py-2.5 rounded transition-colors ' +
+      (isInicial ? 'bg-signal hover:bg-signaldark text-base' : 'bg-alert hover:bg-alertdark text-ink');
+    if (!isInicial) { updateDetalheVisibility(); }
+  }
+
+  // ---------- Espécie de tiro -> detalhe field ----------
+  function updateDetalheVisibility() {
+    const cfg = ESPECIE_CONFIG[fEspecie.value];
+    if (mode === 'inicial' && cfg && cfg.needsDetalhe) {
+      grpDetalhe.classList.remove('hidden');
+      detalheLabel.textContent = cfg.label;
+      if (cfg.kind === 'sel') {
+        fDetalheSel.classList.remove('hidden');
+        fDetalheNum.classList.add('hidden');
+      } else {
+        fDetalheNum.classList.remove('hidden');
+        fDetalheSel.classList.add('hidden');
+        fDetalheNum.placeholder = cfg.placeholder || '';
+      }
+    } else {
+      grpDetalhe.classList.add('hidden');
+    }
+  }
+  fEspecie.addEventListener('change', updateDetalheVisibility);
+
+  // ---------- Munição -> graduação de tempo enable ----------
+  fMunicao.addEventListener('change', () => {
+    const isIlum = fMunicao.value === 'iluminativa';
+    fTempo.disabled = !isIlum;
+    if (!isIlum) fTempo.value = '';
+  });
+
+  // ---------- Digit-only inputs ----------
+  fDeriva.addEventListener('input', () => {
+    fDeriva.value = fDeriva.value.replace(/\D/g, '').slice(0, 4);
+    fDeriva.classList.remove('field-invalid');
+    derivaError.classList.add('hidden');
+  });
+  fAlca.addEventListener('input', () => {
+    fAlca.value = fAlca.value.replace(/\D/g, '').slice(0, 4);
+  });
+
+  function validDeriva(v) {
+    if (!/^\d{4}$/.test(v)) return false;
+    const n = parseInt(v, 10);
+    return n >= 0 && n <= 6400;
+  }
+
+  // ---------- Add record ----------
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+
+    const deriva = fDeriva.value.trim();
+    const carga = fCarga.value;
+    const alca = fAlca.value.trim();
+    let ok = true;
+
+    if (mode === 'inicial') {
+      if (!validDeriva(deriva)) { fDeriva.classList.add('field-invalid'); derivaError.classList.remove('hidden'); ok = false; }
+    } else if (deriva && !validDeriva(deriva)) {
+      fDeriva.classList.add('field-invalid'); derivaError.classList.remove('hidden'); ok = false;
+    }
+    if (!carga) { fCarga.classList.add('field-invalid'); ok = false; } else { fCarga.classList.remove('field-invalid'); }
+    if (!alca)  { fAlca.classList.add('field-invalid'); ok = false; } else { fAlca.classList.remove('field-invalid'); }
+
+    if (!ok) return;
+
+    const cfg = ESPECIE_CONFIG[fEspecie.value];
+    let detalhe = '';
+    if (mode === 'inicial' && cfg && cfg.needsDetalhe) {
+      detalhe = cfg.kind === 'sel' ? fDetalheSel.value : (fDetalheNum.value || cfg.placeholder);
+    }
+
+    records.push({
+      id: uidCounter++,
+      peca: activePeca,
+      mode: mode,
+      time: new Date(),
+      municao: mode === 'inicial' ? fMunicao.value : null,
+      deriva: deriva || '',
+      especie: mode === 'inicial' ? fEspecie.value : null,
+      especieDetalhe: detalhe,
+      carga: carga,
+      tempo: mode === 'inicial' ? fTempo.value.trim() : '',
+      alca: alca,
+      obs: fObs.value.trim(),
+    });
+
+    fDeriva.value = ''; fAlca.value = ''; fObs.value = '';
+    fCarga.value = ''; fTempo.value = '';
+    fCarga.classList.remove('field-invalid'); fAlca.classList.remove('field-invalid');
+    renderAll();
+  });
+
+  // ---------- Quick actions ----------
+  $('btnCessar').addEventListener('click', () => {
+    records.push({ id: uidCounter++, peca: activePeca, mode: 'cessar', time: new Date(), obs: '' });
+    renderAll();
+  });
+  $('btnSuspender').addEventListener('click', () => {
+    records.push({ id: uidCounter++, peca: activePeca, mode: 'suspender', time: new Date(), obs: '' });
+    renderAll();
+  });
+
+  $('btnClearPeca').addEventListener('click', () => {
+    if (!records.some(r => r.peca === activePeca)) return;
+    if (confirm('Limpar todos os registros da Peça ' + activePeca + '?')) {
+      records = records.filter(r => r.peca !== activePeca);
+      renderAll();
+    }
+  });
+
+  function removeRecord(id) {
+    records = records.filter(r => r.id !== id);
+    renderAll();
+  }
+
+  // ---------- Record row values (shared by screen + PDF) ----------
+  const ROW_LABELS = ['Mrt que seguem o Cmdo', 'Munição e espoleta', 'Deriva (LT)', 'Mrt que atiram', 'Espécie de tiro', 'Carga', 'Graduação de tempo', 'Alça'];
+
+  function recordValues(r) {
+    if (r.mode === 'inicial') {
+      return [
+        r.peca + 'ª Peça, Atenção!',
+        MUNICAO_LABEL[r.municao] || '--',
+        r.deriva ? ('Deriva ' + r.deriva + '!') : '--',
+        r.peca + 'ª Peça!',
+        especieLabel(r.especie, r.especieDetalhe),
+        r.carga !== '' ? ('Carga ' + r.carga + '!') : '--',
+        r.tempo ? ('Retardo ' + r.tempo + ' seg') : '--',
+        r.alca ? ('Alça ' + pad4(r.alca)) : '--',
+      ];
+    }
+    // correção — só os elementos que mudaram; carga e alça sempre repetidos
+    return [
+      '--', '--',
+      r.deriva ? ('Deriva ' + r.deriva + '!') : '--',
+      '--', '--',
+      r.carga !== '' ? ('Carga ' + r.carga + '!') : '--',
+      '--',
+      r.alca ? ('Alça ' + pad4(r.alca)) : '--',
+    ];
+  }
+
+  // ---------- Feed rendering ----------
+  function renderFeed() {
+    const list = records.filter(r => r.peca === activePeca).sort((a, b) => a.time - b.time);
+    feedEl.innerHTML = '';
+
+    if (!list.length) {
+      feedEl.innerHTML = '<div class="h-full flex flex-col items-center justify-center text-center py-14 text-inkmuted">' +
+        '<p class="font-display uppercase tracking-wide text-sm">Nenhum tiro registrado</p>' +
+        '<p class="text-xs mt-1">Use o formulário ao lado para lançar o primeiro comando desta peça.</p></div>';
+      return;
+    }
+
+    list.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'border border-line rounded-md bg-panel2/60 overflow-hidden';
+
+      const hora = r.time.toLocaleTimeString('pt-BR');
+
+      if (r.mode === 'cessar' || r.mode === 'suspender') {
+        const isCessar = r.mode === 'cessar';
+        card.className += ' border-' + (isCessar ? 'alert' : 'signal') + '/40';
+        card.innerHTML =
+          '<div class="flex items-center justify-between px-3 py-2.5">' +
+            '<span class="font-display uppercase tracking-wide text-sm font-semibold ' + (isCessar ? 'text-alert' : 'text-signal') + '">' +
+              (isCessar ? '⏹ Cessar fogo — Missão cumprida' : '⏸ Suspender fogo') +
+            '</span>' +
+            '<div class="flex items-center gap-3">' +
+              '<span class="font-mono text-xs text-inkmuted">' + hora + '</span>' +
+              '<button data-id="' + r.id + '" class="removeBtn text-inkmuted hover:text-alert text-sm leading-none">×</button>' +
+            '</div>' +
+          '</div>';
+        feedEl.appendChild(card);
+        card.querySelector('.removeBtn').addEventListener('click', () => removeRecord(r.id));
+        return;
+      }
+
+      const isInicial = r.mode === 'inicial';
+      const values = recordValues(r);
+
+      let rowsHtml = '';
+      for (let i = 0; i < ROW_LABELS.length; i++) {
+        const dim = values[i] === '--';
+        rowsHtml += '<div class="grid grid-cols-[1fr_1.3fr] gap-2 px-3 py-1 odd:bg-panel/40">' +
+          '<span class="text-[11px] font-display uppercase tracking-wide text-inkmuted">' + ROW_LABELS[i] + '</span>' +
+          '<span class="font-mono text-sm ' + (dim ? 'text-inkmuted/60' : 'text-ink') + '">' + values[i] + '</span>' +
+        '</div>';
+      }
+
+      card.innerHTML =
+        '<div class="flex items-center justify-between px-3 py-2 border-b border-line ' + (isInicial ? 'bg-signal/10' : 'bg-alert/10') + '">' +
+          '<span class="font-display uppercase tracking-wide text-xs font-semibold ' + (isInicial ? 'text-signal' : 'text-alert') + '">' +
+            (isInicial ? 'Tiro inicial' : 'Correção') + ' · Peça ' + r.peca +
+          '</span>' +
+          '<div class="flex items-center gap-3">' +
+            '<span class="font-mono text-xs text-inkmuted">' + hora + '</span>' +
+            '<button data-id="' + r.id + '" class="removeBtn text-inkmuted hover:text-alert text-sm leading-none">×</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="py-1">' + rowsHtml + '</div>' +
+        (r.obs ? '<div class="px-3 py-2 border-t border-line text-xs text-inkmuted italic">Obs.: ' + escapeHtml(r.obs) + '</div>' : '');
+
+      feedEl.appendChild(card);
+      card.querySelector('.removeBtn').addEventListener('click', () => removeRecord(r.id));
+    });
+
+    feedEl.scrollTop = feedEl.scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ---------- PDF export ----------
+  function pecaRowsForPdf(peca) {
+    return records.filter(r => r.peca === peca).sort((a, b) => a.time - b.time).map(r => {
+      const hora = r.time.toLocaleTimeString('pt-BR');
+      if (r.mode === 'cessar') return [hora, 'Cessar fogo', '--', '--', 'Missão cumprida', '--', '--', '--', r.obs || ''];
+      if (r.mode === 'suspender') return [hora, 'Suspender fogo', '--', '--', '--', '--', '--', '--', r.obs || ''];
+      const v = recordValues(r);
+      const tipo = r.mode === 'inicial' ? 'Inicial' : 'Correção';
+      return [hora, tipo, v[1], v[2], v[4], v[5], v[6], v[7], r.obs || ''];
+    });
+  }
+
+  function addPecaTable(doc, peca, startY) {
+    const missionName = $('missionName').value.trim();
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(20, 24, 16);
+    doc.text('CENTRAL DE TIRO — Peça ' + peca, 14, startY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(90, 90, 80);
+    doc.text('Missão: ' + (missionName || '—') + '   ·   Exportado em ' + new Date().toLocaleString('pt-BR'), 14, startY + 6);
+
+    const rows = pecaRowsForPdf(peca);
+    doc.autoTable({
+      startY: startY + 10,
+      head: [['Hora', 'Tipo', 'Munição', 'Deriva', 'Espécie de tiro', 'Carga', 'Tempo', 'Alça', 'Obs.']],
+      body: rows.length ? rows : [['--', '--', '--', '--', '--', '--', '--', '--', 'Sem registros']],
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [27, 31, 22], textColor: [231, 226, 208] },
+      alternateRowStyles: { fillColor: [244, 243, 236] },
+      margin: { left: 14, right: 14 },
+    });
+    return doc.lastAutoTable.finalY + 12;
+  }
+
+  $('btnExportPeca').addEventListener('click', () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    addPecaTable(doc, activePeca, 18);
+    doc.save('Peca_' + activePeca + '_registro_de_tiro.pdf');
+  });
+
+  $('btnExportAll').addEventListener('click', () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    let y = 18;
+    for (let p = 1; p <= TOTAL_PECAS; p++) {
+      if (p > 1) { doc.addPage(); y = 18; }
+      addPecaTable(doc, p, y);
+    }
+    const missionName = $('missionName').value.trim().replace(/\s+/g, '_') || 'missao';
+    doc.save('Central_de_Tiro_' + missionName + '.pdf');
+  });
+
+  // ---------- Live clock ----------
+  function tickClock() {
+    $('liveClock').textContent = new Date().toLocaleTimeString('pt-BR');
+  }
+  setInterval(tickClock, 1000);
+
+  // ---------- Master render ----------
+  function renderAll() {
+    renderTabs();
+    logTitleEl.textContent = 'Peça ' + activePeca + ' — registro de tiros';
+    targetLabel.textContent = 'Peça ' + activePeca;
+    renderFeed();
+  }
+
+  // ---------- Init ----------
+  tickClock();
+  syncFormMode();
+  updateDetalheVisibility();
+  renderAll();
+})();
+</script>
+</body>
+</html>
