@@ -15,16 +15,16 @@
     theme: {
       extend: {
         colors: {
-          base:       '#12140D',
-          panel:      '#1B1F16',
-          panel2:     '#242A1B',
-          line:       '#34392A',
-          ink:        '#E7E2D0',
-          inkmuted:   '#9AA085',
-          signal:     '#E0A73B',
-          signaldark: '#B9852A',
-          alert:      '#C1473C',
-          alertdark:  '#9C382F',
+          base:       '#0A0A0A',
+          panel:      '#161616',
+          panel2:     '#212121',
+          line:       '#3A3A3A',
+          ink:        '#F2F2F2',
+          inkmuted:   '#9A9A9A',
+          signal:     '#FFFFFF',
+          signaldark: '#D9D9D9',
+          alert:      '#A6A6A6',
+          alertdark:  '#828282',
         },
         fontFamily: {
           display: ['Oswald', 'sans-serif'],
@@ -39,9 +39,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <style>
-  html, body { background-color: #12140D; }
+  html, body { background-color: #0A0A0A; }
   * { -webkit-tap-highlight-color: transparent; }
-  ::selection { background: #E0A73B; color: #12140D; }
+  ::selection { background: #F2F2F2; color: #0A0A0A; }
 
   /* thin, quiet scrollbars for the tab rail and log feed */
   .rail::-webkit-scrollbar { height: 6px; }
@@ -54,7 +54,7 @@
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
 
-  .field-invalid { border-color: #C1473C !important; }
+  .field-invalid { border-color: #F2F2F2 !important; border-width: 2px !important; }
 
   @keyframes blink-dot { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
   .live-dot { animation: blink-dot 2s ease-in-out infinite; }
@@ -65,10 +65,29 @@
 
   <!-- ============ HEADER ============ -->
   <header class="sticky top-0 z-30 bg-base/95 backdrop-blur border-b border-line">
+    <div class="border-b border-line bg-panel/70">
+      <div class="max-w-6xl mx-auto px-4 py-1.5 flex items-center justify-between">
+        <span class="font-display uppercase tracking-[0.25em] text-[11px] text-inkmuted">SD Dutra — STI</span>
+        <span class="font-display uppercase tracking-[0.25em] text-[11px] text-inkmuted hidden sm:inline">Registro de Comandos</span>
+      </div>
+    </div>
     <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
-      <div class="flex items-baseline gap-3">
-        <h1 class="font-display uppercase tracking-wide text-xl sm:text-2xl font-semibold text-ink">Central de Tiro</h1>
-        <span class="hidden sm:inline text-xs text-inkmuted font-display uppercase tracking-widest">Pel Mrt 81mm · Registro de Comandos</span>
+      <div class="flex items-center gap-3">
+        <svg viewBox="0 0 64 64" class="w-8 h-8 sm:w-9 sm:h-9 shrink-0" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M32 4C20 4 11 13 11 25c0 8 4 14 9 18v9c0 3 2 5 5 5h2v-6h2v6h6v-6h2v6h2c3 0 5-2 5-5v-9c5-4 9-10 9-18C53 13 44 4 32 4Z" fill="#F2F2F2"/>
+          <ellipse cx="24" cy="24" rx="5" ry="6" fill="#0A0A0A"/>
+          <ellipse cx="40" cy="24" rx="5" ry="6" fill="#0A0A0A"/>
+          <path d="M32 30l-3.2 6.5h6.4L32 30Z" fill="#0A0A0A"/>
+          <rect x="20.6" y="45" width="2.6" height="5.5" fill="#0A0A0A"/>
+          <rect x="25.5" y="45" width="2.6" height="6.5" fill="#0A0A0A"/>
+          <rect x="30.4" y="45" width="2.6" height="6.5" fill="#0A0A0A"/>
+          <rect x="35.3" y="45" width="2.6" height="6.5" fill="#0A0A0A"/>
+          <rect x="40.2" y="45" width="2.6" height="5.5" fill="#0A0A0A"/>
+        </svg>
+        <div class="flex items-baseline gap-3">
+          <h1 class="font-display uppercase tracking-wide text-xl sm:text-2xl font-semibold text-ink">Central de Tiro</h1>
+          <span class="hidden sm:inline text-xs text-inkmuted font-display uppercase tracking-widest">Pel Mrt 81mm · Registro de Comandos</span>
+        </div>
       </div>
 
       <div class="flex items-center gap-3 flex-wrap">
@@ -191,8 +210,8 @@
         </form>
 
         <div class="grid grid-cols-2 gap-2 mt-3">
-          <button id="btnSuspender" class="font-display uppercase text-xs tracking-wide py-2 rounded border border-line bg-panel2 hover:bg-panel2/60 text-signal transition-colors">⏸ Suspender fogo</button>
-          <button id="btnCessar" class="font-display uppercase text-xs tracking-wide py-2 rounded border border-line bg-panel2 hover:bg-panel2/60 text-alert transition-colors">⏹ Cessar fogo</button>
+          <button id="btnSuspender" class="font-display uppercase text-xs tracking-wide py-2 rounded border border-line bg-panel2 hover:bg-panel2/60 text-ink transition-colors">⏸ Suspender fogo</button>
+          <button id="btnCessar" class="font-display uppercase text-xs tracking-wide py-2 rounded border border-ink bg-ink hover:bg-signaldark text-base font-semibold transition-colors">⏹ Cessar fogo</button>
         </div>
       </div>
     </section>
@@ -321,7 +340,7 @@
     fAlca.required = true;
     btnAdd.textContent = isInicial ? '+ Registrar tiro' : '+ Registrar correção';
     btnAdd.className = 'w-full font-display uppercase tracking-wide font-semibold py-2.5 rounded transition-colors ' +
-      (isInicial ? 'bg-signal hover:bg-signaldark text-base' : 'bg-alert hover:bg-alertdark text-ink');
+      (isInicial ? 'bg-signal hover:bg-signaldark text-base' : 'bg-alert hover:bg-alertdark text-base');
     if (!isInicial) { updateDetalheVisibility(); }
   }
 
